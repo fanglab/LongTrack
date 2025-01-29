@@ -21,7 +21,7 @@ To showcase the toolbox applications, we provide the following demonstration (wh
 
 ## Running the LongTrack demo
 
-### STEP 1: Download example data from Dropbox
+### STEP 1: Download example data from zenodo
 
   The example data, LongTrack_test_data.zip, can be downloaded at the following zenodo URLs https://zenodo.org/records/14765650 
 
