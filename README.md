@@ -6,8 +6,8 @@ LongTrack is a novel framework that uses long-read metagenomic assemblies and re
 ### Fundamental dependencies
 1.  Python version 2.7.16
 2.  Bowtie version 2.2.8
-
-### Python packages
+   
+   **Python packages**
 1.  numpy >=1.7.1
 2.  HTSeq  >=0.5.3p9
 3.  matplotlib >= 1.0.0
