@@ -1,0 +1,203 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Usage:
+  LongTrack --Strain,-s [MAG_dir] --kmer,-k [unique_kmer_dir] --Metagenome,-m [metagenome_dir] --Conflict_table,-c [conflict_table] --Output,-o [output_dir] [--threads,-t N] [--test]
+
+Example:
+  LongTrack --test >longtrack.log
+  LongTrack -s Data/MAG/ -k Data/unique_kmer/ -m Data/metagenome/ -c Data/conflict_table -o Tracking_results -t 5 >longtrack.log
+"""
+from __future__ import print_function
+import sys
+import os
+import glob
+import subprocess
+import getopt
+import shutil
+from datetime import datetime
+import multiprocessing
+
+def run(cmd):
+    """Run a command list; exit on failure."""
+    print("Running: {}".format(" ".join(cmd)))
+    ret = subprocess.call(cmd)
+    if ret != 0:
+        print("ERROR: '{}' returned exit code {}".format(cmd[0], ret))
+        sys.exit(ret)
+
+def print_help():
+    print(__doc__)
+
+def parse_args():
+    """Parse CLI flags."""
+    if len(sys.argv) == 1:
+        print_help()
+        sys.exit(0)
+
+    try:
+        opts, _ = getopt.getopt(
+            sys.argv[1:],
+            "hs:k:m:c:o:t:",
+            ["help","Strain=", "kmer=", "Metagenome=", "Conflict_table=", "Output=", "threads=", "test"]
+        )
+    except getopt.GetoptError:
+        print_help()
+        sys.exit(2)
+
+    MAG_dir = unique_kmer_dir = metagenome_dir = conflict_table = output_dir = None
+    threads = 1
+    test = False
+
+    for opt, val in opts:
+        if opt in ("-h", "--help"):
+            print_help()
+            sys.exit(0)
+        elif opt in ("-s", "--Strain"):
+            MAG_dir = val
+        elif opt in ("-k", "--kmer"):
+            unique_kmer_dir = val
+        elif opt in ("-m", "--Metagenome"):
+            metagenome_dir = val
+        elif opt in ("-c", "--Conflict_table"):
+            conflict_table = val
+        elif opt in ("-o", "--Output"):
+            output_dir = val
+        elif opt in ("-t", "--threads"):
+            try:
+                threads = int(val)
+            except ValueError:
+                print("Invalid threads value: {}".format(val))
+                sys.exit(0)
+        elif opt == "--test":
+            test = True
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(script_dir, 'Data')
+
+    if test:
+        return (
+            os.path.join(data_dir, 'MAG/'),
+            os.path.join(data_dir, 'unique_kmer/'),
+            os.path.join(data_dir, 'metagenome/'),
+            os.path.join(data_dir, 'conflict_table'),
+            'Tracking_results',
+            5,
+            True
+        )
+
+    if not all([MAG_dir, unique_kmer_dir, metagenome_dir, conflict_table, output_dir]):
+        print("Missing required arguments\n")
+        print_help()
+        sys.exit(0)
+
+    return MAG_dir, unique_kmer_dir, metagenome_dir, conflict_table, output_dir, threads, False
+
+
+def main():
+    MAG_dir, unique_kmer_dir, metagenome_dir, conflict_table, output_dir, threads, test = parse_args()
+
+    if test:
+        print('=== Running in test mode === ')
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+
+    # Start timestamp
+    print("Started at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    # ensure output directory exists
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # Gather strains from MAG directory (.fna filenames)
+    fna_paths = glob.glob(os.path.join(MAG_dir, "*.fna"))
+    strains = [os.path.splitext(os.path.basename(p))[0] for p in fna_paths]
+    strain_count = len(strains)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    code_dir = os.path.join(script_dir, 'code')
+
+
+    # Step 1: find_sample_test_multiple_strains.py for each metagenome sample
+    cmds = []
+    for fasta in glob.glob(os.path.join(metagenome_dir, "*_PE1.fasta")):
+        base = os.path.basename(fasta)
+        if base.endswith("_sample_PE1.fasta"):
+            sample = base[:-len("_sample_PE1.fasta")]
+        else:
+            sample = os.path.splitext(base)[0]
+        sample_dir = os.path.join(metagenome_dir, sample + "_sample")
+        out_prefix = os.path.join(output_dir, sample + "_strain_")
+        cmd = [
+            "python",
+            os.path.join(script_dir, "find_sample_test_multiple_strains.py"),
+            sample_dir,
+            unique_kmer_dir,
+            out_prefix,
+            sample,
+            str(strain_count)
+        ] + strains
+        cmds.append(cmd)
+
+    # Execute in parallel or sequentially
+    if threads > 1:
+        pool = multiprocessing.Pool(processes=threads)
+        try:
+            pool.map(run, cmds)
+        finally:
+            pool.close()
+            pool.join()
+    else:
+        for cmd in cmds:
+            run(cmd)
+
+    # Step 2: understand_sample_test_individual_strain_raw_results.py for each strain
+    for strain in strains:
+        cmd = [
+               "python", 
+               os.path.join(script_dir, "understand_sample_test_individual_strain_raw_results.py"),
+               MAG_dir, unique_kmer_dir, metagenome_dir, output_dir,
+               strain, os.path.join(output_dir, strain + "_results")]
+        out_file = os.path.join(output_dir, strain + "_results_kmers_reads")
+        print("Running: {} > {}".format(" ".join(cmd), out_file))
+        with open(out_file, "w") as outf:
+            ret = subprocess.call(cmd, stdout=outf)
+            if ret != 0:
+                sys.exit("Error running: {}".format(" ".join(cmd)))
+
+    # Step 3: understand_sample_test_allstrains_nextstep_raw_results.py
+    run(["python", 
+         os.path.join(script_dir, "understand_sample_test_allstrains_nextstep_raw_results.py"),
+         MAG_dir, metagenome_dir, conflict_table, output_dir])
+
+    # Step 4: map_reads_ofstrain_tosamples.py for each strain
+    for strain in strains:
+        cmd = ["python", 
+               os.path.join(script_dir, "map_reads_ofstrain_tosamples.py"),
+               os.path.join(output_dir, "results_raw_reads"), strain,
+               MAG_dir, metagenome_dir, conflict_table, output_dir]
+        run(cmd)
+
+    # Step 5: analyze_results_map_reads_ofstrain_tosamples.py
+    run(["python",
+         os.path.join(script_dir, "analyze_results_map_reads_ofstrain_tosamples.py"),
+         MAG_dir, metagenome_dir, conflict_table, output_dir])
+
+    # cleanup intermediate files
+    run([
+        "find", output_dir,
+        "-type", "f",
+        "!", "-name", "results_readdistribution_actualreads*",
+        "-exec", "rm", "-f", "{}", "+"
+    ])
+
+    # Final summary script
+    run(["python", os.path.join(script_dir, "LongTrack_result.py"), output_dir])
+
+    # Timestamp end
+    print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    print("Successfully_Finished_All")
+
+if __name__ == "__main__":
+    main()
+
