@@ -55,7 +55,7 @@ LongTrack --test  >longtrack.log
   [--test]
 ```
 
-  For example, using the test data provided within this repository
+  For example 
 ```sh
   LongTrack -s Data/MAG/ \
   -k Data/unique_kmer/ \
