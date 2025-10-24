@@ -126,4 +126,5 @@ Gemmiger_formicilis_D1  	0	0	1	1	1
 
 
 # Citations
-Yu Fan, Mi Ni, Varun Aggarwala, et al. LongTrack: long read metagenomics-based precise tracking of bacterial strains and their genomic changes after fecal microbiota transplantation. bioRxiv 2024.09.30.615906; doi: https://doi.org/10.1101/2024.09.30.615906
+Fan, Y., Ni, M., Aggarwala, V. et al. Long-read metagenomics for strain tracking after faecal microbiota transplant. Nat Microbiol (2025). https://doi.org/10.1038/s41564-025-02164-8
+
